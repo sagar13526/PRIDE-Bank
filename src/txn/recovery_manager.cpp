@@ -16,21 +16,12 @@ long long RecoveryManager::logOperation(int txn_id, const std::string& op,
     auto& db = db::DBConnector::getInstance();
     
     std::string sql = "INSERT INTO TransactionLog (txn_id, op, before_val, after_val) VALUES (?, ?, ?, ?);";
-    bool success = db.executeParameterized(sql, {std::to_string(txn_id), op, before_val, after_val});
-    if (!success) {
+    unsigned long long lsn = db.insertParameterized(sql, {std::to_string(txn_id), op, before_val, after_val});
+    if (lsn == 0) {
         std::cerr << "[RecoveryManager] Failed to write WAL entry for txn: " << txn_id << std::endl;
         return -1;
     }
-
-    auto rows = db.query("SELECT MAX(lsn) AS lsn FROM TransactionLog;");
-    if (!rows.empty() && rows[0].find("lsn") != rows[0].end()) {
-        try {
-            return std::stoll(rows[0].at("lsn"));
-        } catch (...) {
-            return 1;
-        }
-    }
-    return 1;
+    return static_cast<long long>(lsn);
 }
 
 int RecoveryManager::recoverOnRestart() {
@@ -81,6 +72,11 @@ int RecoveryManager::recoverOnRestart() {
         db.executeParameterized("INSERT INTO TransactionLog (txn_id, op, before_val, after_val) VALUES (?, 'ROLLED_BACK', 'CRASH_RECOVERY', 'UNDO_COMPLETE');", {std::to_string(txnId)});
         recoveredTxns++;
     }
+
+    // A crash between the WAL COMMIT record and the status update leaves a committed
+    // transaction marked PENDING. The WAL is the source of truth: finish the bookkeeping.
+    db.execute("UPDATE Transactions SET status = 'COMMITTED' WHERE status = 'PENDING' AND txn_id IN "
+               "(SELECT txn_id FROM (SELECT txn_id FROM TransactionLog WHERE op = 'COMMIT') AS c);");
 
     std::cout << "[RecoveryManager] Crash Recovery complete! Recovered & undone " << recoveredTxns << " uncommitted transactions." << std::endl;
     return recoveredTxns;

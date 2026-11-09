@@ -27,9 +27,9 @@ struct DBConfig {
     unsigned int port = 3306;
     std::string user = "root";
     std::string password;
-    std::string database = "pride";  // created automatically if missing and the user may create it
+    std::string database = "pride_bank";  // created automatically if missing and the user may create it
 
-    // BANKSAFE_DB_HOST / _PORT / _USER / _PASSWORD / _NAME override the defaults.
+    // PRIDEBANK_DB_HOST / _PORT / _USER / _PASSWORD / _NAME override the defaults.
     static DBConfig fromEnv();
 };
 
@@ -51,6 +51,9 @@ public:
     // May contain several ';'-separated statements (schema.sql, seed_data.sql).
     bool execute(const std::string& sql);
     bool executeParameterized(const std::string& sql, const std::vector<std::string>& params);
+    // Runs an INSERT and returns its AUTO_INCREMENT id (0 on failure), read under the
+    // same lock as the insert, so concurrent inserts can never see each other's id.
+    unsigned long long insertParameterized(const std::string& sql, const std::vector<std::string>& params);
 
     std::vector<std::map<std::string, std::string>> query(const std::string& sql);
     std::vector<std::map<std::string, std::string>> queryParameterized(const std::string& sql, const std::vector<std::string>& params);
