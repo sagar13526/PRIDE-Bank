@@ -1,5 +1,7 @@
 #include "api/dashboard_api.h"
 #include "db/db_connector.h"
+#include "predict/predictor_service.h"
+#include "predict/telemetry.h"
 #include "txn/recovery_manager.h"
 
 #include <atomic>
@@ -30,7 +32,7 @@ static void initializeDatabase() {
 
     if (!db.init(cfg)) {
         std::cerr << "Fatal: cannot connect to MySQL. Is the server running, and are the\n"
-                     "BANKSAFE_DB_HOST / _PORT / _USER / _PASSWORD / _NAME variables correct?"
+                     "PRIDEBANK_DB_HOST / _PORT / _USER / _PASSWORD / _NAME variables correct?"
                   << std::endl;
         std::exit(1);
     }
@@ -54,7 +56,7 @@ static void initializeDatabase() {
 
 int main(int argc, char* argv[]) {
     std::cout << "==========================================================\n"
-              << "          PRIDE-Bank - Phase 2 Baseline\n"
+              << "          PRIDE-Bank - Phase 3\n"
               << "      Team Tech Titans (OS & DBMS PBL Integration)\n"
               << "==========================================================" << std::endl;
 
@@ -65,6 +67,10 @@ int main(int argc, char* argv[]) {
     // Crash recovery: undo every transaction that never committed or aborted.
     txn::RecoveryManager::getInstance().recoverOnRestart();
 
+    // Telemetry sampler + online Markov predictor (PREDICTIVE_HYBRID mode uses it).
+    predict::PredictorService::getInstance().attach();
+    predict::TelemetryMonitor::getInstance().start(10);
+
     if (!api::DashboardAPI::getInstance().startServer(apiPort)) return 1;
 
     std::cout << "\nEndpoints:\n"
@@ -72,6 +78,8 @@ int main(int argc, char* argv[]) {
                  "  GET  /api/wal-logs | /api/deadlock-logs\n"
                  "  POST /api/transfer | /api/stress-test | /api/force-deadlock\n"
                  "  POST /api/simulate-crash | /api/recover | /api/reset\n"
+                 "  GET/POST /api/policy | GET /api/predictor | POST /api/predictor/config | /reset\n"
+                 "  GET/POST /api/telemetry\n"
                  "\nPress Ctrl+C to stop." << std::endl;
 
     std::signal(SIGINT, onSignal);
@@ -79,6 +87,7 @@ int main(int argc, char* argv[]) {
     while (!g_stop) std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     std::cout << "\nShutting down..." << std::endl;
+    predict::TelemetryMonitor::getInstance().stop();
     api::DashboardAPI::getInstance().stopServer();
     return 0;
 }
