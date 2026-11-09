@@ -1,4 +1,5 @@
 #pragma once
+#include "concurrency/deadlock_handler.h"
 #include "concurrency/std_thread_compat.h"
 #include <condition_variable>
 #include <mutex>
@@ -28,17 +29,30 @@ enum class LockResult { Granted, Aborted };
 // Contract:  beginTxn(id, {from,to});  acquire(id,from);  acquire(id,to);
 //            ... debit / credit / commit ...;  releaseAll(id);
 // If acquire() returns Aborted: roll the transaction back, THEN releaseAll(id).
+// A snapshot of lock contention, cheap to take (one mutex acquisition). Used by the
+// telemetry monitor that feeds the deadlock predictor.
+struct LockStats {
+    int locked = 0;              // accounts currently owned
+    int waiting = 0;             // transactions blocked on a lock
+    int maxChain = 0;            // longest chain "T1 waits for T2 waits for T3 ..."
+    unsigned long long waitEvents = 0;  // times a transaction started to wait (cumulative)
+    unsigned long long grants = 0;      // lock grants (cumulative)
+};
+
 class LockManager {
 public:
     static LockManager& getInstance();
 
-    void beginTxn(int txnId, const std::vector<std::string>& claim);
+    // claim = the accounts this transaction may ever lock (Banker's); info = metadata
+    // used by the VALUE_BASED victim policy.
+    void beginTxn(int txnId, const std::vector<std::string>& claim, const TxnInfo& info = TxnInfo());
     LockResult acquire(int txnId, const std::string& accountId, LockMode mode);
     void releaseAll(int txnId);  // also clears WFG edges + Banker's registration
 
     bool isAccountLocked(const std::string& accountId);
     int getLockHolder(const std::string& accountId);  // 0 if free
     std::unordered_map<std::string, std::string> getLockStateMap();  // account -> txn id
+    LockStats getStats();
 
 private:
     LockManager() = default;
@@ -53,6 +67,7 @@ private:
     std::unordered_map<int, std::vector<std::string>> held_;
     std::unordered_map<int, std::string> waitingOn_;
     std::unordered_set<int> aborted_;  // chosen as victim, not yet cleaned up
+    unsigned long long waitEvents_ = 0, grants_ = 0;
 };
 
 }  // namespace concurrency
