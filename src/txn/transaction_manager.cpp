@@ -15,14 +15,9 @@ int TransactionManager::beginTransaction(const std::string& from_acct, const std
     auto& db = db::DBConnector::getInstance();
 
     std::string sql = "INSERT INTO Transactions (from_acct, to_acct, amount, status) VALUES (?, ?, ?, 'PENDING');";
-    bool success = db.executeParameterized(sql, {from_acct, to_acct, std::to_string(amount)});
-    if (!success) return -1;
-
-    auto rows = db.query("SELECT MAX(txn_id) AS txn_id FROM Transactions;");
-    int txn_id = -1;
-    if (!rows.empty() && rows[0].count("txn_id")) {
-        txn_id = std::stoi(rows[0].at("txn_id"));
-    }
+    int txn_id = static_cast<int>(
+        db.insertParameterized(sql, {from_acct, to_acct, std::to_string(amount)}));
+    if (txn_id <= 0) return -1;
 
     if (txn_id > 0) {
         RecoveryManager::getInstance().logOperation(txn_id, "BEGIN", "", 
@@ -51,7 +46,7 @@ bool TransactionManager::debit(int txn_id, const std::string& acct_id, double am
     std::string afterVal = acct_id + ":" + std::to_string(newBalance);
 
     // 1. WAL entry BEFORE data modification
-    RecoveryManager::getInstance().logOperation(txn_id, "DEBIT", beforeVal, afterVal);
+    if (RecoveryManager::getInstance().logOperation(txn_id, "DEBIT", beforeVal, afterVal) < 0) return false;
 
     // 2. Perform DB update
     std::string sql = "UPDATE Accounts SET balance = balance - ?, version = version + 1 WHERE id = ?;";
@@ -73,7 +68,7 @@ bool TransactionManager::credit(int txn_id, const std::string& acct_id, double a
     std::string afterVal = acct_id + ":" + std::to_string(newBalance);
 
     // 1. WAL entry BEFORE data modification
-    RecoveryManager::getInstance().logOperation(txn_id, "CREDIT", beforeVal, afterVal);
+    if (RecoveryManager::getInstance().logOperation(txn_id, "CREDIT", beforeVal, afterVal) < 0) return false;
 
     // 2. Perform DB update
     std::string sql = "UPDATE Accounts SET balance = balance + ?, version = version + 1 WHERE id = ?;";
@@ -84,16 +79,13 @@ bool TransactionManager::commit(int txn_id) {
     std::lock_guard<std::mutex> lock(txn_mutex_);
     auto& db = db::DBConnector::getInstance();
 
-    RecoveryManager::getInstance().logOperation(txn_id, "COMMIT", "", "");
+    if (RecoveryManager::getInstance().logOperation(txn_id, "COMMIT", "", "") < 0) return false;
     return db.executeParameterized("UPDATE Transactions SET status = 'COMMITTED' WHERE txn_id = ?;", {std::to_string(txn_id)});
 }
 
 bool TransactionManager::rollback(int txn_id) {
     std::lock_guard<std::mutex> lock(txn_mutex_);
     auto& db = db::DBConnector::getInstance();
-
-    // Log ABORT/ROLLBACK in WAL
-    RecoveryManager::getInstance().logOperation(txn_id, "ABORT", "", "");
 
     // Fetch WAL logs for this txn in REVERSE LSN
     auto rows = db.queryParameterized("SELECT * FROM TransactionLog WHERE txn_id = ? ORDER BY lsn DESC;", {std::to_string(txn_id)});
@@ -111,6 +103,9 @@ bool TransactionManager::rollback(int txn_id) {
         }
     }
 
+    // The ABORT record goes in only AFTER every before-image is restored. If we crash
+    // mid-undo there is no ABORT record yet, so recovery redoes the whole (idempotent) undo.
+    RecoveryManager::getInstance().logOperation(txn_id, "ABORT", "", "");
     return db.executeParameterized("UPDATE Transactions SET status = 'ABORTED' WHERE txn_id = ?;", {std::to_string(txn_id)});
 }
 

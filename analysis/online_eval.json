@@ -1,0 +1,62 @@
+[
+  {
+    "name": "cold start, forgetting 1.0",
+    "n": 6793,
+    "base_rate": 0.2886795230384219,
+    "brier": 0.16846387240125743,
+    "brier_base_rate_const": 0.20534365601673116,
+    "auc": 0.7661935684591251
+  },
+  {
+    "name": "cold start, forgetting 0.9999",
+    "n": 6790,
+    "base_rate": 0.2885125184094256,
+    "brier": 0.16762962904630635,
+    "brier_base_rate_const": 0.20527304513047648,
+    "auc": 0.7681725000261519
+  },
+  {
+    "name": "cold start, forgetting 0.999",
+    "n": 6769,
+    "base_rate": 0.28837346727729357,
+    "brier": 0.16322304983005684,
+    "brier_base_rate_const": 0.2052142106477653,
+    "auc": 0.7824980346246388
+  },
+  {
+    "name": "cold start, forgetting 0.99",
+    "n": 0
+  },
+  {
+    "name": "warm start from heavy-load model, forgetting 1.0",
+    "n": 6985,
+    "base_rate": 0.2844667143879742,
+    "brier": 0.2734690427577685,
+    "brier_base_rate_const": 0.2035454027932849,
+    "auc": 0.7173381682819077
+  },
+  {
+    "name": "warm start from heavy-load model, forgetting 0.9999",
+    "n": 6985,
+    "base_rate": 0.2844667143879742,
+    "brier": 0.2689427195788448,
+    "brier_base_rate_const": 0.2035454027932849,
+    "auc": 0.7172475432044987
+  },
+  {
+    "name": "warm start from heavy-load model, forgetting 0.999",
+    "n": 6985,
+    "base_rate": 0.2844667143879742,
+    "brier": 0.22497486666490274,
+    "brier_base_rate_const": 0.2035454027932849,
+    "auc": 0.7117365315527319
+  },
+  {
+    "name": "static heavy-load model (no adaptation)",
+    "n": 6985,
+    "base_rate": 0.2844667143879742,
+    "brier": 0.30933457376451007,
+    "brier_base_rate_const": 0.2035454027932849,
+    "auc": 0.7458569738917208
+  }
+]

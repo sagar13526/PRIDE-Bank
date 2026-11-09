@@ -54,8 +54,8 @@ bool allDigits(const std::string& s) {
 
 DBConfig DBConfig::fromEnv() {
     DBConfig c;
-    c.host = envOr("PRIDEBANK_HOST", c.host.c_str());
-    c.port = static_cast<unsigned int>(std::atoi(envOr("PRIDEBANK", "3306").c_str()));
+    c.host = envOr("PRIDEBANK_DB_HOST", c.host.c_str());
+    c.port = static_cast<unsigned int>(std::atoi(envOr("PRIDEBANK_DB_PORT", "3306").c_str()));
     c.user = envOr("PRIDEBANK_DB_USER", c.user.c_str());
     c.password = envOr("PRIDEBANK_DB_PASSWORD", "");
     c.database = envOr("PRIDEBANK_DB_NAME", c.database.c_str());
@@ -246,6 +246,17 @@ bool DBConnector::executeParameterized(const std::string& sql, const std::vector
         return false;
     }
     return runLocked(bound, nullptr);
+}
+
+unsigned long long DBConnector::insertParameterized(const std::string& sql, const std::vector<std::string>& params) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    std::string bound;
+    if (!conn_ || !bindLocked(sql, params, bound)) {
+        if (conn_) std::cerr << "[DBConnector] " << last_error_ << " | Query: " << sql.substr(0, 200) << std::endl;
+        return 0;
+    }
+    if (!runLocked(bound, nullptr)) return 0;
+    return static_cast<unsigned long long>(mysql_insert_id(conn_));
 }
 
 std::vector<std::map<std::string, std::string>> DBConnector::query(const std::string& sql) {
