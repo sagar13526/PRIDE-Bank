@@ -44,3 +44,56 @@ CREATE TABLE IF NOT EXISTS DeadlockLog (
     cycle_accounts TEXT NOT NULL,
     detected_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
+-- Predictor data (Phase 3, data side of the Markov predictor)
+-- A "dataset" is a named collection of runs ('live', 'train', 'heldout', 'indep', ...).
+-- ---------------------------------------------------------------------------
+
+-- One row per benchmark / recording run.
+CREATE TABLE IF NOT EXISTS telemetry_run (
+    dataset VARCHAR(40) NOT NULL,
+    run_id INT NOT NULL,
+    threads INT NULL,
+    accounts INT NULL,
+    hot_prob DOUBLE NULL,
+    transfers_per_thread INT NULL,
+    seed INT NULL,
+    deadlocks INT NULL,
+    elapsed_ms DOUBLE NULL,
+    committed INT NULL,
+    failed INT NULL,
+    PRIMARY KEY (dataset, run_id)
+) ENGINE=InnoDB;
+
+-- One row per telemetry sample (every 10 ms). state: 0 NORMAL, 1 CONTENTION, 2 HIGH_RISK, 3 DEADLOCK.
+CREATE TABLE IF NOT EXISTS telemetry_sample (
+    sample_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    dataset VARCHAR(40) NOT NULL,
+    run_id INT NOT NULL,
+    t_sec DOUBLE NOT NULL,
+    active INT NOT NULL,
+    waiting INT NOT NULL,
+    max_chain INT NOT NULL,
+    locked INT NOT NULL,
+    new_deadlocks INT NOT NULL,
+    new_waits INT NOT NULL,
+    state TINYINT NOT NULL,
+    CONSTRAINT chk_sample_state CHECK (state BETWEEN 0 AND 3),
+    CONSTRAINT fk_sample_run FOREIGN KEY (dataset, run_id)
+        REFERENCES telemetry_run (dataset, run_id) ON DELETE CASCADE,
+    INDEX idx_sample_run (dataset, run_id, sample_id),
+    INDEX idx_sample_state (dataset, state)
+) ENGINE=InnoDB;
+
+-- The learned transition counts of the Markov chain (one row per from/to pair per model).
+CREATE TABLE IF NOT EXISTS markov_counts (
+    model VARCHAR(40) NOT NULL,
+    from_state TINYINT NOT NULL,
+    to_state TINYINT NOT NULL,
+    cnt DOUBLE NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (model, from_state, to_state),
+    CONSTRAINT chk_counts_states CHECK (from_state BETWEEN 0 AND 2 AND to_state BETWEEN 0 AND 3),
+    CONSTRAINT chk_counts_cnt CHECK (cnt >= 0)
+) ENGINE=InnoDB;

@@ -57,7 +57,7 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/benchmark/benchmark_suite.cpp)
 endif()
 
 enable_testing()
-foreach(t test_connector test_integration test_recovery test_markov)
+foreach(t test_connector test_integration test_recovery test_markov test_markov_persist)
   if(EXISTS ${CMAKE_SOURCE_DIR}/tests/${t}.cpp)
     add_executable(${t} tests/${t}.cpp)
     target_link_libraries(${t} PRIVATE banksafe_core)
